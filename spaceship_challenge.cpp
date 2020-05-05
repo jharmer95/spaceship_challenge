@@ -1,14 +1,15 @@
 #if __cplusplus < 201709
-#error C++20 must be enabled
+#    error C++20 must be enabled
 #endif
 
 #if __GNUC__ < 10
-#error Only GCC 10+ is supported for the C++20 features here
+#    error Only GCC 10+ is supported for the C++20 features here
 #endif
 
 #include <algorithm>
 #include <array>
 #include <compare>
+#include <concepts>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -37,29 +38,37 @@ public:
     Spaceship& operator=(Spaceship&& other) = default;
 
     // Spaceship for the Spaceship 🙂
-    auto operator<=>(const Spaceship& other) const = default;
+    auto operator<=>(const Spaceship& other) const noexcept = default;
 
     // Print is a bit prettier
     void Print() const noexcept
     {
-        // This would be a great place for std::format
-        std::cout << "\nThis ship is loaded with:"
-                  << "\n  Engine: " << _parts.at(Part_Type::Engine)
-                  << "\n  Fuselage: " << _parts.at(Part_Type::Fuselage)
-                  << "\n  Cabin: " << _parts.at(Part_Type::Cabin)
-                  << "\n  Armor: " << _parts.at(Part_Type::Armor)
-                  << "\n  Wings:\n    (small): " << _smallWings << "\n    (large): " << _largeWings;
-
-        std::cout << "\n  Weapons: [";
-
-        // Using C++20 ranges
-        for (const auto& weapon :
-            std::views::all(_weapons) | std::views::take(_weapons.size() - 1))
+        try
         {
-            std::cout << weapon << ", ";
-        }
+            // This would be a great place for std::format
+            std::cout << "\nThis ship is loaded with:"
+                      << "\n  Engine: " << _parts.at(Part_Type::Engine)
+                      << "\n  Fuselage: " << _parts.at(Part_Type::Fuselage)
+                      << "\n  Cabin: " << _parts.at(Part_Type::Cabin)
+                      << "\n  Armor: " << _parts.at(Part_Type::Armor)
+                      << "\n  Wings:\n    (small): " << _smallWings
+                      << "\n    (large): " << _largeWings;
 
-        std::cout << _weapons.back() << "]\n";
+            std::cout << "\n  Weapons: [";
+
+            // Using C++20 ranges
+            for (const auto& weapon : std::views::all(_weapons)
+                    | std::views::take(_weapons.size() - 1))
+            {
+                std::cout << weapon << ", ";
+            }
+
+            std::cout << _weapons.back() << "]\n";
+        }
+        catch (const std::exception& ex)
+        {
+            std::cerr << "Exception: \"" << ex.what() << "\"\n";
+        }
     }
 
 private:
@@ -78,7 +87,7 @@ private:
 
     std::string _smallWings{};
     std::string _largeWings{};
-    
+
     // Utilizing std::array for algorithm support
     std::array<std::string, 4> _weapons{};
 };
@@ -86,7 +95,7 @@ private:
 Spaceship::Spaceship(std::vector<std::string>&& part_list) noexcept
 {
     // Map of types to corresponding strings, would be a great place for 'using enum'
-    const std::unordered_map<Part_Type, std::string_view> part_types_list{
+    const std::unordered_map<Part_Type, const char*> part_types_list{
         { Part_Type::Engine, "engine" }, { Part_Type::Fuselage, "fuselage" },
         { Part_Type::Cabin, "cabin" }, { Part_Type::Wings, "wings" },
         { Part_Type::Armor, "armor" }, { Part_Type::Weapon, "weapon" }
@@ -135,17 +144,24 @@ Spaceship::Spaceship(std::vector<std::string>&& part_list) noexcept
         std::min(_weapons.size(), weaponParts.size()), _weapons.begin());
 }
 
-int main(const int argc, const char* const argv[])
+// Using concepts, pretty trivial example but wanted to use it
+template<typename T>
+concept PathType = std::constructible_from<std::filesystem::path, T>;
+
+int main(const int argc, const char* const argv[]) noexcept
 {
     try
     {
         // parts_list parsing is lambda
-        const auto fetch_parts_list = [](std::string&& fname) {
+        // taking advantage of C++20 templated lambdas and concepts
+        const auto fetch_parts_list = []<PathType T>(T&& fname) {
             // Using std::filesystem
             if (!std::filesystem::exists(fname))
             {
-                throw std::runtime_error(
-                    "file: '" + fname + "' does not exist!");
+                // Would be nice to have std::format here
+                std::stringstream err_mesg;
+                err_mesg << "file: '" << fname << "' does not exist!";
+                throw std::runtime_error(err_mesg.str());
             }
 
             std::ifstream file(fname);
@@ -153,8 +169,10 @@ int main(const int argc, const char* const argv[])
             // Early exit
             if (!file.is_open())
             {
-                throw std::runtime_error(
-                    "file: '" + fname + "' could not be opened!");
+                // Would be nice to have std::format here
+                std::stringstream err_mesg;
+                err_mesg << "file: '" << fname << "' could not be opened!";
+                throw std::runtime_error(err_mesg.str());
             }
 
             std::vector<std::string> vec;
@@ -181,8 +199,7 @@ int main(const int argc, const char* const argv[])
         };
 
         // Ternary for short-circuiting
-        const auto parts_filename =
-            argc > 1 ? argv[1] : "vehicle_parts.txt";
+        const auto parts_filename = argc > 1 ? argv[1] : "vehicle_parts.txt";
 
         // Only printing once so use r-value
         Spaceship{ fetch_parts_list(parts_filename) }.Print();

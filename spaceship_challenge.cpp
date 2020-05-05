@@ -1,3 +1,11 @@
+#if __cplusplus < 201709
+#error C++20 must be enabled
+#endif
+
+#if __GNUC__ < 10
+#error Only GCC 10+ is supported for the C++20 features here
+#endif
+
 #include <algorithm>
 #include <array>
 #include <compare>
@@ -34,16 +42,16 @@ public:
     // Print is a bit prettier
     void Print() const noexcept
     {
-        std::cout << "\nThis ship is loaded with:\n  Engine: "
-                  << _parts.at(Part_Type::Engine)
+        // This would be a great place for std::format
+        std::cout << "\nThis ship is loaded with:"
+                  << "\n  Engine: " << _parts.at(Part_Type::Engine)
                   << "\n  Fuselage: " << _parts.at(Part_Type::Fuselage)
                   << "\n  Cabin: " << _parts.at(Part_Type::Cabin)
-                  << "\n  Wings: " << _parts.at(Part_Type::Wings)
-                  << "\n  Armor: " << _parts.at(Part_Type::Armor);
+                  << "\n  Armor: " << _parts.at(Part_Type::Armor)
+                  << "\n  Wings:\n    (small): " << _smallWings << "\n    (large): " << _largeWings;
 
         std::cout << "\n  Weapons: [";
 
-#if __GNUC__ >= 10
         // Using C++20 ranges
         for (const auto& weapon :
             std::views::all(_weapons) | std::views::take(_weapons.size() - 1))
@@ -52,26 +60,6 @@ public:
         }
 
         std::cout << _weapons.back() << "]\n";
-#else
-        auto it = _weapons.begin();
-
-        while (true)
-        {
-            if (!it->empty())
-            {
-                std::cout << *it;
-
-                if (++it == _weapons.end())
-                {
-                    break;
-                }
-
-                std::cout << ", ";
-            }
-        }
-
-        std::cout << "]\n";
-#endif // __GNUC__ >= 10
     }
 
 private:
@@ -82,22 +70,26 @@ private:
         Fuselage,
         Cabin,
         Wings,
-        Armor
+        Armor,
+        Weapon
     };
 
-    std::unordered_map<Part_Type, std::string> _parts;
+    std::unordered_map<Part_Type, std::string> _parts{};
 
+    std::string _smallWings{};
+    std::string _largeWings{};
+    
     // Utilizing std::array for algorithm support
-    std::array<std::string, 4> _weapons;
+    std::array<std::string, 4> _weapons{};
 };
 
 Spaceship::Spaceship(std::vector<std::string>&& part_list) noexcept
 {
-    // Map of types to corresponding strings
+    // Map of types to corresponding strings, would be a great place for 'using enum'
     const std::unordered_map<Part_Type, std::string_view> part_types_list{
         { Part_Type::Engine, "engine" }, { Part_Type::Fuselage, "fuselage" },
         { Part_Type::Cabin, "cabin" }, { Part_Type::Wings, "wings" },
-        { Part_Type::Armor, "armor" }
+        { Part_Type::Armor, "armor" }, { Part_Type::Weapon, "weapon" }
     };
 
     std::vector<std::string> weaponParts;
@@ -113,13 +105,27 @@ Spaceship::Spaceship(std::vector<std::string>&& part_list) noexcept
     {
         for (const auto& type_str : part_types_list)
         {
-            if (part_str.find("weapon") != std::string::npos)
+            if (part_str.find(type_str.second) != std::string::npos)
             {
-                weaponParts.push_back(std::move(part_str));
-            }
-            else if (part_str.find(type_str.second) != std::string::npos)
-            {
-                _parts[type_str.first] = std::move(part_str);
+                if (type_str.first == Part_Type::Weapon)
+                {
+                    weaponParts.push_back(std::move(part_str));
+                }
+                else if (type_str.first == Part_Type::Wings)
+                {
+                    if (_smallWings.empty())
+                    {
+                        _smallWings = std::move(part_str);
+                    }
+                    else if (_largeWings.empty())
+                    {
+                        _largeWings = std::move(part_str);
+                    }
+                }
+                else
+                {
+                    _parts[type_str.first] = std::move(part_str);
+                }
             }
         }
     }
@@ -175,7 +181,7 @@ int main(const int argc, const char* const argv[])
         };
 
         // Ternary for short-circuiting
-        const char* const parts_filename =
+        const auto parts_filename =
             argc > 1 ? argv[1] : "vehicle_parts.txt";
 
         // Only printing once so use r-value
